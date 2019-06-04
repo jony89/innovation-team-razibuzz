@@ -2,6 +2,9 @@
 #include <Wire.h>
 #include "RTClib.h"
 
+#define DISTANCE 30
+#define SENSORS_NUM 3
+
 #if defined(ARDUINO_ARCH_SAMD)
    // for Zero, output on USB Serial console, remove line below if using programming port to program the Zero!
    #define Serial SerialUSB
@@ -33,24 +36,27 @@ void setupClock() {
 }
 
 // defines pins numbers
-const int trigPin = 7;
-const int echoPin = 8;
+const int trigPin[3] = { 2 , 4 , 7 };
+const int echoPin[3] = { 3 , 5 ,8 };
 const int ledPin = 9;
 const int buzzPin = 10;
 
 // defines variables
-long duration;
-int distance = 0; // in cm.
-int prevDistance = 0; //saves the last distance from the last run through
-int goAwayFlag = 0; //flags if the item has been there for more than 10 cycles
+int distance[3] = { 0 , 0 , 0}; // in cm.
+int prevDistance[3] = { 0 , 0 , 0}; //saves the last distance from the last run through
+int goAwayFlag[3] = { 0 , 0 , 0}; //flags if the item has been there for more than 10 cycles
 boolean isItBuzzing = false;
 boolean showingLight = false;
 int delayBetCheck = 500; // delay between scans
 int timeStayed = 0; //time the object has been there
 
 void setup() {
-  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
-  pinMode(echoPin, INPUT); // Sets the echoPin as an Input
+  for ( int i = 0 ; i < SENSORS_NUM ; i++ ){
+  pinMode(trigPin[i], OUTPUT); // Sets the trigPin as an Output
+  pinMode(echoPin[i], INPUT); // Sets the echoPin as an Input
+  }
+  pinMode(buzzPin, OUTPUT);
+  pinMode(ledPin, OUTPUT);
   Serial.begin(9600); // Starts the serial communication
   setupClock();
 }
@@ -72,11 +78,6 @@ void printTime() {
     Serial.print(now.second(), DEC);
     Serial.println();
     
-//    Serial.print(" since midnight 1/1/1970 = ");
-//    Serial.print(now.unixtime());
-//    Serial.print("s = ");
-//    Serial.print(now.unixtime() / 86400L);
-//    Serial.println("d");
 }
 
 void showEffect() {
@@ -85,69 +86,77 @@ void showEffect() {
     Serial.print("now : ");
     Serial.print(currentHour);
 
-    if (currentHour >= 19 && currentHour <= 7) {
+    if (currentHour >= 19 && currentHour <= 7 || true) {
         showingLight = true;
         Serial.print("now : ");
         digitalWrite(ledPin, HIGH);
-        delay(1000);
+        delay(500);
         digitalWrite(ledPin, LOW);
-        delay(100);
+        delay(500);
     } else {
         isItBuzzing = true;
-        digitalWrite(buzzPin, HIGH);
+        tone(buzzPin, 1000);
         delay(1000);
-        digitalWrite(buzzPin, LOW);
-        delay(100);
+        noTone(buzzPin);
+        delay(1000);
     }
 }
 
-void loop() {
-//  printTime();
-  // Clears the trigPin
+int getDistance(int trigPin, int echoPin)
+{
+  long duration;
   digitalWrite(trigPin, LOW);
-  delayMicroseconds(delayBetCheck);
-
-  // Sets the trigPin on HIGH state for 10 micro seconds
+  delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
+  delayMicroseconds(20);
   digitalWrite(trigPin, LOW);
-
-  //saves the previous distance
-  prevDistance = distance;
-
-  // Reads the echoPin, returns the sound wave travel time in microseconds
   duration = pulseIn(echoPin, HIGH);
+  duration = duration / 59;
+  Serial.print("Distance is: ");
+  Serial.print(duration);
+  Serial.println(" centimeters");
+  return duration;
+}
 
+void loop() {
+
+for (int i = 0 ; i < SENSORS_NUM ; i++  ){
+  //saves the previous distance
+  prevDistance[i] = distance[i];
   // Calculating the distance
-  distance = duration * 0.034 / 2;
+  distance[i] = getDistance(trigPin[i],echoPin[i]);
 
   //checks if the previous distance is the same as the new one
-  if (abs(distance - prevDistance) <= 10) {
-    goAwayFlag++;
+  if (abs(distance[i] - prevDistance[i]) <= 10) {
+    goAwayFlag[i]++;
   } else {
-    goAwayFlag = 0;
+    goAwayFlag[i] = 0;
   }
 
-  if (distance < 250 && distance != 0 && goAwayFlag >= 10 && goAwayFlag <= 120) { //if the object has less than 2.5 meters away for 10 cycles, we flip out
+  if (distance[i] < DISTANCE && distance[i] != 0 && goAwayFlag[i] >= 10 && goAwayFlag[i] <= 120) { //if the object has less than 2.5 meters away for 10 cycles, we flip out
     showEffect();
     timeStayed += delayBetCheck;
   } else {
-    if (goAwayFlag > 120) {
-      goAwayFlag = 0;
+    if (goAwayFlag[i] > 120) {
+      goAwayFlag[i] = 0;
     }
     digitalWrite(ledPin, LOW);
     digitalWrite(buzzPin, LOW);
     isItBuzzing = false;
     showingLight = false;
   }
+  Serial.print("Sensor no.");
+  Serial.print(i);
+  Serial.println("'s status:");
   Serial.print("distance: ");
-  Serial.print(distance);
+  Serial.print(distance[i]);
   Serial.print(" , ");
   Serial.print("prevDistance: ");
-  Serial.print(prevDistance);
+  Serial.print(prevDistance[i]);
   Serial.print(" , ");
   Serial.print("Is it buzzing? ");
   Serial.println(isItBuzzing);
   Serial.print("showing light? ");
   Serial.println(showingLight);
+  }
 }
